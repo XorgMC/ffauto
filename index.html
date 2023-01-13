@@ -128,6 +128,55 @@
                 border-bottom: 2px solid black;
             }
         </style>
+        <script>
+            let progressInterval;
+
+            function nFormatter(num, digits) {
+                const lookup = [
+                { value: 1, symbol: "" },
+                { value: 1e3, symbol: "k" },
+                { value: 1e6, symbol: "M" },
+                { value: 1e9, symbol: "G" },
+                { value: 1e12, symbol: "T" },
+                { value: 1e15, symbol: "P" },
+                { value: 1e18, symbol: "E" }
+                ];
+                const rx = /\.0+$|(\.[0-9]*[1-9])0+$/;
+                var item = lookup.slice().reverse().find(function(item) {
+                return num >= item.value;
+                });
+                return item ? (num / item.value).toFixed(digits).replace(rx, "$1") + item.symbol : "0";
+            }
+
+            function httpGetAsync(theUrl, callback) {
+                var xmlHttp = new XMLHttpRequest();
+                xmlHttp.onreadystatechange = function() { 
+                    if (xmlHttp.readyState == 4 && xmlHttp.status == 200)
+                        callback(xmlHttp.responseText);
+                }
+                xmlHttp.open("GET", theUrl, true); // true for asynchronous 
+                xmlHttp.send(null);
+            }
+
+            function updateProgress() {
+                httpGetAsync("stats", (rsp => {
+                    let statData = JSON.parse(rsp);
+                    document.getElementById('current-file-name').innerText = statData.file;
+                    document.getElementById('pgbar-lbl').innerText = statData.pct + "%";
+                    document.getElementById('pgbar-bar').style["width"] = statData.pct + "%";
+                    document.getElementById('filesize').innerText = statData.size;
+                    document.getElementById('fps').innerText = statData.fps;
+                    document.getElementById('rate').innerText = statData.rate;
+                    document.getElementById('ela').innerText = new Date(statData.ela * 1000).toISOString().slice(11, 19);
+                    document.getElementById('rem').innerText = new Date(statData.rem * 1000).toISOString().slice(11, 19);
+                    document.getElementById('ela').innerText = statData.cpu + "%";
+                }));
+            }
+
+            function initUpdate() {
+                progressInterval = setInterval(updateProgress, 500);
+            }
+        </script>
     </head>
     <body>
         <div class="headerbar">
@@ -194,6 +243,6 @@
             <p class="browsehappy">You are using an <strong>outdated</strong> browser. Please <a href="#">upgrade your browser</a> to improve your experience.</p>
         <![endif]-->
         
-        <script src="" async defer></script>
+        <script async defer>initUpdate();</script>
     </body>
 </html>

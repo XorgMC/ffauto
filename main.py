@@ -13,10 +13,20 @@ import random
 import sys
 import signal
 import psutil
+import argparse
 
+FFMPEG_NICE = 15
+FFMPEG_CMD = "ffmpeg"
+FFPROBE_CMD = "ffprobe"
 INP_DIR = "/home/fsch/Videos"
 OUT_DIR = "/home/fsch/Videos/out" #TODO: Verify folders
 TMP_DIR = "/tmp/ffauto" #TODO: Verify folders/mkdir
+ARCHIVE_DIR = "/tmp/archive"
+DEL_ORIG = False
+MOVE_ORIG = False
+OVERWRITE = False
+EXTENSIONS = ['mp4']
+CODECS = "-c:v libx265 -crf 28 -b:v 0 -c:a aac -vbr 4 -c:s copy"
 
 STAT_FILE = ""
 STAT_PROGRESS = 0
@@ -55,7 +65,7 @@ def start_webserver_background():
 
 def create_webserver():
     app = web.Application()
-    app.add_routes([web.get('/', web_handle),
+    app.add_routes([web.get('/', index), web.get('/index', index), web.get('/index.html', index),
                     web.get('/stats', web_stats),
                     web.get('/queue', web_queue),
                 web.get('/{name}', web_handle)])
@@ -71,6 +81,9 @@ def start_webserver(runner):
     WS_THREAD.run_until_complete(site.start())
     WS_THREAD.run_forever()
     d("START_WS", "Webserver stopped!")
+
+async def index(request):
+    return web.FileResponse('./index.html')
 
 async def web_queue(request):
     return web.Response(text=json.dumps(CONV_QUEUE))
@@ -120,14 +133,36 @@ def enqueue_file(filepath):
     else:
         d("", "stopped", True, False)
 
+def post_convert(input_file, temp_file, output_file, copy_temp = True):
+    if copy_temp:
+        os.replace(temp_file, output_file)
+        d("PCONVERT", f"Moved temp file to {output_file}")
+    archive_filename = os.path.join(ARCHIVE_DIR, os.path.basename(input_file))
+    if MOVE_ORIG and (not os.path.exists(archive_filename) or OVERWRITE):
+        os.replace(input_file, archive_filename)
+        d("PCONVERT", f"Moved {input_file} to archive {archive_filename}")
+    if DEL_ORIG and not MOVE_ORIG:
+        os.remove(input_file)
+        d("PCONVERT", f"Deleted input file {input_file}")
+    
+
+
 def convert_file(input_file):
     global STAT_FILE, STAT_PROGRESS, STAT_FILESIZE, STAT_AVG_FPS, STAT_AVG_BITRATE, STAT_TIME_REMAINING, STAT_TIME_ELAPSED, STAT_TIME_STARTED, STAT_CPU_UTIL, FFMP_PROC
-    d("CONVERT", f"Starting conversion of {input_file} - counting frames")
     output_file = os.path.join(OUT_DIR, os.path.basename(input_file))
     temp_file = os.path.join(TMP_DIR, random_name() + os.path.splitext(input_file)[1])
+    if os.path.exists(output_file):
+        if os.path.getsize(output_file) == 0 or OVERWRITE:
+            d("CONVERT", f"Output file exists, removing (empty or overwrite)")
+            os.remove(output_file)
+        else:
+            d("CONVERT", f"Skipping conversion of {input_file} (exists)")
+            post_convert(input_file, None, output_file, False)
+            return
 
+    d("CONVERT", f"Starting conversion of {input_file} - counting frames")
     # Get frame count
-    FFMP_PROC = subprocess.Popen(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-count_packets', '-show_entries', 
+    FFMP_PROC = subprocess.Popen([FFPROBE_CMD, '-v', 'error', '-select_streams', 'v:0', '-count_packets', '-show_entries', 
                              'stream=nb_read_packets', '-of', 'csv=p=0', input_file], 
                              stdout=subprocess.PIPE)
     frame_count = int(re.sub("[^0-9]", "", FFMP_PROC.communicate()[0].decode()))
@@ -137,10 +172,15 @@ def convert_file(input_file):
     STAT_FILE = os.path.basename(input_file)
 
     # Convert file
-    FFMP_PROC = subprocess.Popen(['ffmpeg', '-y', '-loglevel', 'quiet', '-hide_banner', '-stats', '-i', input_file, 
+    # ['nice', '-n', FFMPEG_NICE,
+    #  FFMPEG_CMD, '-y', '-loglevel', 'quiet', '-hide_banner', '-stats', '-i', input_file, 
+    #  '-map_chapters', '0', '-map_metadata', '0', '-map', '0:v:0', '-map', '0:a:0',
+    #  '-x265-params', 'log-level=error', '-c:v', 'libx265', '-crf', '28', '-b:v', '0', 
+    #  '-c:a', 'aac', '-vbr', '4', '-c:s', 'copy', '-movflags', '+faststart', temp_file]
+    FFMP_PROC = subprocess.Popen(['nice', '-n', FFMPEG_NICE,
+                             FFMPEG_CMD, '-y', '-loglevel', 'quiet', '-hide_banner', '-stats', '-i', input_file, 
                              '-map_chapters', '0', '-map_metadata', '0', '-map', '0:v:0', '-map', '0:a:0',
-                             '-c:v', 'libx265', '-x265-params', 'log-level=error', '-crf', '28', '-b:v', '0', 
-                             '-c:a', 'aac', '-vbr', '4', '-c:s', 'copy', '-movflags', '+faststart', temp_file],
+                             '-x265-params', 'log-level=error', CODECS, '-movflags', '+faststart', temp_file],
                              stderr=subprocess.PIPE)
     ffps = psutil.Process(FFMP_PROC.pid)
 
@@ -157,7 +197,8 @@ def convert_file(input_file):
             frames_done = int(outp.group('nframe'))
             STAT_FILESIZE = outp.group("nsize") + outp.group("ssize")
             STAT_AVG_FPS = round((3*STAT_AVG_FPS+float(outp.group("nfps")))/4, 2)
-            STAT_AVG_BITRATE = round( (3*STAT_AVG_BITRATE+float(outp.group("nbitrate")))/4 ,1)
+            #STAT_AVG_BITRATE = round( (3*STAT_AVG_BITRATE+float(outp.group("nbitrate")))/4 ,1) #141.2kbits/s
+            STAT_AVG_BITRATE = f"{outp.group('nbitrate')}{outp.group('sbitrate').replace('its/s', 'ps')}"
             STAT_PROGRESS = round((frames_done/frame_count)*100)
             STAT_TIME_ELAPSED = round(time.time() - STAT_TIME_STARTED)
             STAT_CPU_UTIL = round(ffps.cpu_percent(interval=0.0))
@@ -170,12 +211,14 @@ def convert_file(input_file):
     
     d("CONVERT", f"Done transcoding {input_file} to {temp_file}")
 
+    post_convert(input_file, temp_file, output_file)
+
     #TODO: Copy temp to output
     if os.path.exists(temp_file):
         d("CONVERT", f"Deleting temp-file {temp_file}")
         os.remove(temp_file)
 
-    initVars()
+    resetVars()
 
 def watch_conversion_queue():
     global CONV_QUEUE
@@ -185,6 +228,42 @@ def watch_conversion_queue():
             d("CONV_QUEUE", f"Starting job, {len(CONV_QUEUE)} remaining")
             convert_file(CONV_QUEUE.pop())
     d("CONV_QUEUE", "Conversion queue terminated.")
+
+def check_folders():
+    d("INIT_CF", "Checking folders...")
+    if not os.access(TMP_DIR, os.W_OK):
+        print("ERROR: TMP_DIR is not writeable!")
+        sys.exit(1)
+    else:
+        d("INIT_CF", "TMP_DIR is writeable.")
+
+    if not os.access(OUT_DIR, os.W_OK):
+        print("ERROR: OUT_DIR is not writeable!")
+        sys.exit(1)
+    else:
+        d("INIT_CF", "OUT_DIR is writeable.")
+
+    if not os.access(INP_DIR, os.W_OK) and (DEL_ORIG or MOVE_ORIG):
+        print("ERROR: INP_DIR is not writeable, and moving/deleting input files enabled!")
+        sys.exit(1)
+    else:
+        d("INIT_CF", "INP_DIR is writeable.")
+
+    if not os.access(ARCHIVE_DIR, os.W_OK) and MOVE_ORIG:
+        print("ERROR: ARCHIVE_DIR is not writeable, and moving input files enabled!")
+        sys.exit(1)
+    else:
+        d("INIT_CF", "ARCHIVE_DIR is writeable.")
+
+    if not os.path.exists(TMP_DIR):
+        os.makedirs(TMP_DIR)
+    if not os.path.exists(OUT_DIR):
+        os.makedirs(OUT_DIR)
+    if not os.path.exists(INP_DIR):
+        os.makedirs(INP_DIR)
+    if not os.path.exists(ARCHIVE_DIR):
+        os.makedirs(ARCHIVE_DIR)
+    
 
 def start_conversion_thread():
     d("INIT_CV", "checking folders")
@@ -225,7 +304,7 @@ def watch_directory():
             time.sleep(0.5)
     d("WLOOP", "Watchloop stopped!")
 
-def initVars():
+def resetVars():
     global STAT_FILE, STAT_PROGRESS, STAT_FILESIZE, STAT_AVG_FPS, STAT_AVG_BITRATE, STAT_TIME_REMAINING, STAT_TIME_ELAPSED, STAT_TIME_STARTED, STAT_CPU_UTIL, FFMP_PROC
     FFMP_PROC = None
     STAT_FILE = ""
@@ -237,6 +316,55 @@ def initVars():
     STAT_TIME_STARTED = 0
     STAT_TIME_ELAPSED = 0
     STAT_CPU_UTIL = 0
+
+def envOrDef(key, defval):
+    return 
+    return defval if key not in os.environ else os.environ[key]
+
+def initVars():
+    if 'IS_DOCKER' in os.environ:
+        FFMPEG_NICE = int(os.getenv('FFMPEG_NICE') or 15)
+        FFMPEG_CMD = os.getenv('FFMPEG_CMD') or 'ffmpeg'
+        FFPROBE_CMD = os.getenv('FFPROBE_CMD') or 'ffprobe'
+        INP_DIR = os.getenv('INP_DIR') or '/ffauto/input'
+        OUT_DIR = os.getenv('OUT_DIR') or '/ffauto/output'
+        TMP_DIR = os.getenv('TMP_DIR') or '/ffauto/temp'
+        ARCHIVE_DIR = os.getenv('ARCHIVE_DIR') or '/ffauto/archive'
+        DEL_ORIG = (os.getenv('DEL_ORIG') or '0') == '1'
+        MOVE_ORIG = (os.getenv('MOVE_ORIG') or '0') == '1'
+        OVERWRITE = (os.getenv('OVERWRITE') or '0') == '1'
+        CODECS = os.getenv('CODECS') or '-c:v libx265 -crf 28 -b:v 0 -c:a aac -vbr 4 -c:s copy'
+        EXTENSIONS = (os.getenv('EXTENSIONS') or 'mp4').split(' ')
+        
+    #----FFMPEG_NICE = 15
+    #FFMPEG_CMD = "ffmpeg"
+    #FFPROBE_CMD = "ffprobe"
+    #----INP_DIR = "/home/fsch/Videos"
+    #----OUT_DIR = "/home/fsch/Videos/out" #TODO: Verify folders
+    #----TMP_DIR = "/tmp/ffauto" #TODO: Verify folders/mkdir
+    #----ARCHIVE_DIR = "/tmp/archive"
+    #----DEL_ORIG = False
+    #----MOVE_ORIG = False
+    #----OVERWRITE = False
+    #----CODECS=""
+    #----EXTENSIONS=[]
+    parser = argparse.ArgumentParser()
+    parser.add_argument('inp', help="Input folder")
+    parser.add_argument('outp', help="Output folder")
+    parser.add_argument('-a', '--archive', help="Archive input files to specified folder", default=None)
+    parser.add_argument('-d', '--delete', help="Delete input files after conversion", action='store_true')
+    parser.add_argument('-r', '--replace', help="Overwrite/replace existing files in archive and output folders", action='store_true')
+    parser.add_argument('-n', '--nice', help="Set ffmpeg nice value. Must be root for negative values.", default=0)
+    parser.add_argument('-t', '--temp', help="Set temporary folder", default="/tmp/ffauto")
+    parser.add_argument('-m', '--ffmpeg', help="Set custom ffmpeg binary", default="ffmpeg")
+    parser.add_argument('-p', '--ffprobe', help="Set custom ffprobe binary", default="ffprobe")
+    parser.add_argument('-c', '--codec', help="Set custom audio/video codecs and parameters", default="")
+    parser.add_argument('-e', '--extensions', help="Set file extensions to convert")
+    parser.parse_args()
+
+
+
+
 
 
 def handle_quit(sig, frame):
@@ -264,8 +392,13 @@ def handle_quit(sig, frame):
     
 
 if __name__ == '__main__':
+    print(type(os.environ['IST_DOCKER']))
+    sys.exit(1)
     signal.signal(signal.SIGINT, handle_quit)
-    initVars()
+
+    check_folders()
+
+    resetVars()
     start_webserver_background()
     start_conversion_thread()
     watch_directory()
