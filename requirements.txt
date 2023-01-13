@@ -1,1 +1,2 @@
 inotify>=0.2.10
+aiohttp>=3.8.3

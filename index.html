@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<!--[if lt IE 7]>      <html class="no-js lt-ie9 lt-ie8 lt-ie7"> <![endif]-->
+<!--[if IE 7]>         <html class="no-js lt-ie9 lt-ie8"> <![endif]-->
+<!--[if IE 8]>         <html class="no-js lt-ie9"> <![endif]-->
+<!--[if gt IE 8]>      <html class="no-js"> <!--<![endif]-->
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <title>ffauto status page</title>
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="stylesheet" href="">
+        <style>
+            body {
+                font-family: monospace;
+                
+            }
+            .headerbar {
+                border-bottom: 2px solid black;
+                margin-left: -8px;
+                margin-right: -8px;
+                padding-left: 8px;
+                margin-bottom: 16px;
+            }
+            .headerbar h1 {
+                margin: 5px 0px;
+            }
+            .statusbox {
+                border: 2px solid black;
+                margin-bottom: 12px;
+            }
+            .statusbox-header {
+                border-bottom: 1px solid black;
+                display: flex;
+            }
+            .statusbox-header-currentfile {
+                margin: 0;
+                /*border-right: 1px solid black;*/
+                padding: 4px;
+            }
+            .statusbox-header * {
+                vertical-align: top;
+            }
+            .current-file-lbl {
+                margin: 0;
+                overflow: hidden;
+                white-space: nowrap;
+                text-overflow: ellipsis;
+                max-width: 70vw;
+            }
+
+
+            .wrapper {
+                margin: 0 8px 0 4px;
+                flex-grow: 1;
+                padding: 4px;
+			}
+			
+			.progress-bar {
+				width: 100%;
+				background-color: #fff;
+
+				border-radius: 3px;
+                border: 1px solid black;
+				box-shadow: inset 0 1px 3px rgba(0, 0, 0, .1);
+			}
+
+            .progress-label {
+                float: left;
+                width: 100%;
+                font-weight: bold;
+                text-align: center;
+                color: #fff;
+                mix-blend-mode: difference;
+                user-select: none;
+            }
+
+			.progress-bar-fill {
+				display: block;
+				height: 17px;
+				background-color: #000;
+                color: #fff;
+				border-radius: 3px;
+				transition: width 500ms ease-in-out;
+			}
+
+
+            .status-table { width: 100%; }
+            .status-table tr td { overflow: hidden; }
+            .status-table tr td p { margin: 4px; }
+            .status-table tr td p span:nth-child(1) { font-weight: bold; }
+            
+            #filesize-lbl::after { content: "dateigröße: "; }
+            #fps-lbl::after { content: "Ø fps: "; }
+            #rate-lbl::after { content: "Ø bitrate: "; }
+            #ela-lbl::after { content: "vergangen: "; }
+            #rem-lbl::after { content: "verbleibend: "; }
+            #cpu-lbl::after { content: "cpu-ausl.:"; }
+            #current-file-bold::after { content: "aktuelle Datei:"; font-weight: bold; }
+
+            @media only screen and (max-width: 489px) {
+                .status-table tr td p span { display: block; }
+            }
+
+            @media only screen and (max-width: 300px) {
+                #current-file-bold::after { content: "a.D.:"; font-weight: bold; }
+                #filesize-lbl::after { content: "größe:"; }
+                #fps-lbl::after { content: "fps:"; }
+                #rate-lbl::after { content: "bitr.:"; }
+                #ela-lbl::after { content: "verg.: "; }
+                #rem-lbl::after { content: "verbl.: "; }
+                #cpu-lbl::after { content: "cpu:"; }
+            }
+
+            .jobtable table { width: 100%; border-collapse: collapse; }
+            .jobtable table td, .jobtable table th { padding: 2px 4px; }
+            .jobtable table th:nth-child(1),
+            .jobtable table td:nth-child(1) { text-align: left; }
+            .jobtable table th:nth-child(2),
+            .jobtable table td:nth-child(2) { text-align: right; }
+            .jobtable table thead { background-color: #ccc; box-shadow: 0px -0px 1px rgba(34,34,34,0.4);}
+            .jobtable table tbody tr:nth-child(2n) { background-color: #eee;}
+            .jobtable { padding: 4px;}
+            .jobtable h2 {
+                margin: 12px 0px -1px 0px;
+                padding-left: 3px;
+                border-bottom: 2px solid black;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="headerbar">
+            <h1>ffauto status page</h1>
+        </div>
+
+        <div class="statusbox">
+            <div class="statusbox-header">
+                <div class="statusbox-header-currentfile">
+                    <p class="current-file-lbl"><span id="current-file-bold"></span> <span id="current-file-name">musterdatei.mp4</span></p>
+                </div>
+                <div class="wrapper">
+                    <div class="progress-bar">
+                        <span class="progress-label" id="pgbar-lbl">51%</span>
+                        <span class="progress-bar-fill" id="pgbar-bar" style="width: 51%;"></span>                        
+                    </div>
+                </div>
+            </div>
+            <table class="status-table">
+                <tr>
+                    <td><p><span id="filesize-lbl"></span><span id="filesize">120kB</span></p></td>
+                    <td><p><span id="fps-lbl"></span><span id="fps">64</span></p></td>
+                    <td><p><span id="rate-lbl"></span><span id="rate">12821kB/s</span></p></td>
+                </tr>
+                <tr>
+                    <td><p><span id="ela-lbl"></span><span id="ela">00:01:20</span></p></td>
+                    <td><p><span id="rem-lbl"></span><span id="rem">00:01:20</span></p></td>
+                    <td><p><span id="cpu-lbl"></span><span id="cpu">100%</span></p></td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="jobtable">
+            <h2>warteschlange</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>dateiname</th>
+                        <th>größe</th>
+                    </tr>
+
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>sample.mp4</td>
+                        <td>300MB</td>
+                    </tr>
+                    <tr>
+                        <td>sample.mp4</td>
+                        <td>300MB</td>
+                    </tr>
+                    <tr>
+                        <td>sample.mp4</td>
+                        <td>300MB</td>
+                    </tr>
+                    <tr>
+                        <td>sample.mp4</td>
+                        <td>300MB</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <!--[if lt IE 7]>
+            <p class="browsehappy">You are using an <strong>outdated</strong> browser. Please <a href="#">upgrade your browser</a> to improve your experience.</p>
+        <![endif]-->
+        
+        <script src="" async defer></script>
+    </body>
+</html>
