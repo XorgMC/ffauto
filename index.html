@@ -96,7 +96,7 @@
             #rate-lbl::after { content: "Ø bitrate: "; }
             #ela-lbl::after { content: "vergangen: "; }
             #rem-lbl::after { content: "verbleibend: "; }
-            #cpu-lbl::after { content: "cpu-ausl.:"; }
+            #cpu-lbl::after { content: "cpu-ausl.: "; }
             #current-file-bold::after { content: "aktuelle Datei:"; font-weight: bold; }
 
             @media only screen and (max-width: 489px) {
@@ -115,10 +115,10 @@
 
             .jobtable table { width: 100%; border-collapse: collapse; }
             .jobtable table td, .jobtable table th { padding: 2px 4px; }
+            .jobtable table th,
+            .jobtable table td { text-align: right; }
             .jobtable table th:nth-child(1),
-            .jobtable table td:nth-child(1) { text-align: left; }
-            .jobtable table th:nth-child(2),
-            .jobtable table td:nth-child(2) { text-align: right; }
+            .jobtable table td:nth-child(1) { width: 99%; text-align: left; }
             .jobtable table thead { background-color: #ccc; box-shadow: 0px -0px 1px rgba(34,34,34,0.4);}
             .jobtable table tbody tr:nth-child(2n) { background-color: #eee;}
             .jobtable { padding: 4px;}
@@ -127,26 +127,25 @@
                 padding-left: 3px;
                 border-bottom: 2px solid black;
             }
+
+            .footer {
+                position: fixed;
+                left: 0;
+                bottom: 0;
+                width: 100%;
+                text-align: center;
+            }
+
+            .gray {
+                color: gray;
+                text-decoration: none;
+                font-style: italic;
+            }
         </style>
         <script>
             let progressInterval;
-
-            function nFormatter(num, digits) {
-                const lookup = [
-                { value: 1, symbol: "" },
-                { value: 1e3, symbol: "k" },
-                { value: 1e6, symbol: "M" },
-                { value: 1e9, symbol: "G" },
-                { value: 1e12, symbol: "T" },
-                { value: 1e15, symbol: "P" },
-                { value: 1e18, symbol: "E" }
-                ];
-                const rx = /\.0+$|(\.[0-9]*[1-9])0+$/;
-                var item = lookup.slice().reverse().find(function(item) {
-                return num >= item.value;
-                });
-                return item ? (num / item.value).toFixed(digits).replace(rx, "$1") + item.symbol : "0";
-            }
+            let queueInterval;
+            let queueBuffer = [];
 
             function httpGetAsync(theUrl, callback) {
                 var xmlHttp = new XMLHttpRequest();
@@ -156,6 +155,41 @@
                 }
                 xmlHttp.open("GET", theUrl, true); // true for asynchronous 
                 xmlHttp.send(null);
+            }
+
+            function updateActions() {
+                var anchors = document.getElementsByTagName('a');
+                for(var i = 0; i < anchors.length; i++) {
+                    var anc = anchors[i];
+                    if(anc.className.match(/.*aclink.*/g)) {
+                        anc.onclick = function(e) {
+                            e.preventDefault();
+                            let tgt = e.srcElement.attributes.href.textContent;
+                            if(tgt.startsWith("./del") && !confirm("Wirklich entfernen?")) 
+                                return
+                            httpGetAsync(e.srcElement.attributes.href.textContent, () => updateQueue);
+                        }
+                    }
+                }
+            }
+
+            function updateQueue() {
+                httpGetAsync("queue", (rsp => {
+                    let newQueue = JSON.parse(rsp);
+
+                    if(newQueue.toString() == queueBuffer.toString()) return;
+                    else queueBuffer = newQueue;
+                    
+                    let tBody = document.getElementById('jobtable-body');
+                    tBody.innerHTML = '';
+                    newQueue.forEach(obj => {
+                        let row = tBody.insertRow();
+                        row.insertCell().appendChild(document.createTextNode(obj[0]));
+                        row.insertCell().appendChild(document.createTextNode(obj[1]));
+                        row.insertCell().insertAdjacentHTML("beforeend", "<a class=\"aclink\" href=\"./prio:" + obj[2] + "\">prio</a>&nbsp;&nbsp;<a class=\"aclink\" href=\"./del:" + obj[2] + "\">entf</a>");
+                    });
+                    updateActions();
+                }));
             }
 
             function updateProgress() {
@@ -169,12 +203,15 @@
                     document.getElementById('rate').innerText = statData.rate;
                     document.getElementById('ela').innerText = new Date(statData.ela * 1000).toISOString().slice(11, 19);
                     document.getElementById('rem').innerText = new Date(statData.rem * 1000).toISOString().slice(11, 19);
-                    document.getElementById('ela').innerText = statData.cpu + "%";
+                    document.getElementById('cpu').innerText = statData.cpu + "%";
                 }));
             }
 
             function initUpdate() {
+                updateQueue();
+                updateProgress();
                 progressInterval = setInterval(updateProgress, 500);
+                queueInterval = setInterval(updateQueue, 500);
             }
         </script>
     </head>
@@ -204,40 +241,30 @@
                 <tr>
                     <td><p><span id="ela-lbl"></span><span id="ela">00:01:20</span></p></td>
                     <td><p><span id="rem-lbl"></span><span id="rem">00:01:20</span></p></td>
-                    <td><p><span id="cpu-lbl"></span><span id="cpu">100%</span></p></td>
+                    <td><p><span id="cpu-lbl"></span><span id="cpu">100%</span> | <a title="umwandlung abbrechen" href="./stop" class="aclink">abbr</a></a></p></td>
                 </tr>
             </table>
         </div>
 
         <div class="jobtable">
             <h2>warteschlange</h2>
-            <table>
+            <table id="jobtable-table">
                 <thead>
                     <tr>
                         <th>dateiname</th>
                         <th>größe</th>
+                        <th>aktionen</th>
                     </tr>
 
                 </thead>
-                <tbody>
-                    <tr>
-                        <td>sample.mp4</td>
-                        <td>300MB</td>
-                    </tr>
-                    <tr>
-                        <td>sample.mp4</td>
-                        <td>300MB</td>
-                    </tr>
-                    <tr>
-                        <td>sample.mp4</td>
-                        <td>300MB</td>
-                    </tr>
-                    <tr>
-                        <td>sample.mp4</td>
-                        <td>300MB</td>
-                    </tr>
+                <tbody id="jobtable-body">
+                    
                 </tbody>
             </table>
+        </div>
+
+        <div class="footer">
+            <p>ffauto &middot; (c) libf.de 2023 &middot; <a href="https://github.com/libf-de/ffauto">github</a> <a href="https://www.gnu.org/licenses/gpl-3.0.de.html" class="gray">[gpl v3]</a></p>
         </div>
         <!--[if lt IE 7]>
             <p class="browsehappy">You are using an <strong>outdated</strong> browser. Please <a href="#">upgrade your browser</a> to improve your experience.</p>
