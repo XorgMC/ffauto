@@ -1,0 +1,28 @@
+version: "3.7"
+
+services:
+  ffauto:
+    container_name: ffauto
+    build: .
+    restart: unless-stopped
+    environment:
+      INP_DIR: /ffauto/input  # Input files directory
+      #OUT_DIR: /ffauto/output  # Output files directory
+      #TMP_DIR: /ffauto/temp  # Temporary directory 
+      #ARCHIVE_DIR: /ffauto/archive  # Archive directory (if enabled)
+      #MOVE_ORIG: 0  # Move files from INP_DIR to ARCHIVE_DIR after conversion
+      #DEL_ORIG: 0  # Delete files from INP_DIR after conversion
+      #OVERWRITE: 0  # Overwrite existing files in OUT_DIR and ARCHIVE_DIR
+      #CODECS: '-map_chapters 0 -map_metadata 0 -map 0:v:0 -map 0:a:0 -c:v libx265 -crf 28 -b:v 0 -c:a aac -vbr 4 -c:s copy'  # FFMPEG A/V codecs
+      #EXTENSIONS: 'mp4 mkv mpg mpe mov avi dv ogv'  # Extensions to convert
+      #OUT_FMT: 'auto'  # Extension of output files (auto=same as input)
+      #PORT: 8088  # Port of status webserver (0 = disabled)
+      #HOST: '0.0.0.0'  # Host of status webserver
+    volumes:
+      #- ./input:/ffauto/input
+      #- ./output:/ffauto/output
+      #- ./temp:/ffauto/temp
+      #- ./archive:/ffauto/archive
+      - ./ffauto:/ffauto
+    ports:
+      - 8088:8088
