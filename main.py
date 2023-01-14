@@ -15,6 +15,7 @@ import signal
 import psutil
 import argparse
 import urllib.parse
+import shutil
 
 FFMPEG_NICE = 15
 FFMPEG_CMD = "ffmpeg"
@@ -174,11 +175,11 @@ def enqueue_file(filepath):
 
 def post_convert(input_file, temp_file, output_file, copy_temp = True):
     if copy_temp:
-        os.replace(temp_file, output_file)
+        shutil.move(temp_file, output_file)
         d("POSTPROC", f"Moved temp file to {output_file}")
     archive_filename = os.path.join(ARCHIVE_DIR, os.path.basename(input_file))
     if MOVE_ORIG and (not os.path.exists(archive_filename) or OVERWRITE):
-        os.replace(input_file, archive_filename)
+        shutil.move(input_file, archive_filename)
         d("POSTPROC", f"Moved {input_file} to archive {archive_filename}")
     if DEL_ORIG and not MOVE_ORIG:
         os.remove(input_file)
