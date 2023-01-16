@@ -60,9 +60,21 @@ COLORS = ["\33[31m", "\33[32m", "\33[33m", "\33[34m", "\33[35m", "\33[36m"]
 def d(component: str, message: str, newline = True, header = True):
     if DEBUG:
         if header:
-            print(f"{COLORS[ord(component[0]) % 6]} {component.ljust(8)} |\33[0m {message}", end='\n' if newline else '', flush=True)
+            print(f"{COLORS[ord(component[0]) % 6]}[{component.ljust(8)}]\33[0m [D] {message}", end='\n' if newline else '', flush=True)
         else:
             print(message, end='\n' if newline else '', flush=True)
+
+def i(component: str, message: str, newline = True, header = True):
+    if header:
+        print(f"{COLORS[ord(component[0]) % 6]}[{component.ljust(8)}]\33[0m \33[34m[I]\33[0m {message}", end='\n' if newline else '', flush=True)
+    else:
+        print(message, end='\n' if newline else '', flush=True)
+
+def w(component: str, message: str, newline = True, header = True):
+    if header:
+        print(f"{COLORS[ord(component[0]) % 6]}[{component.ljust(8)}]\33[0m \33[31m[W]\33[0m {message}", end='\n' if newline else '', flush=True)
+    else:
+        print(message, end='\n' if newline else '', flush=True)
 
 def start_webserver_background():
     if PORT == 0:
@@ -112,14 +124,14 @@ def web_stop(request):
     
 def start_webserver(runner):
     global WS_THREAD
-    d("START_WS", "Start Webserver!")
+    i("START_WS", "Start Webserver!")
     WS_THREAD = asyncio.new_event_loop()
     asyncio.set_event_loop(WS_THREAD)
     WS_THREAD.run_until_complete(runner.setup())
     site = web.TCPSite(runner, HOST, PORT)
     WS_THREAD.run_until_complete(site.start())
     WS_THREAD.run_forever()
-    d("START_WS", "Webserver stopped!")
+    i("START_WS", "Webserver stopped!")
 
 async def favicon(request):
     return web.FileResponse('./favicon.ico')
@@ -169,21 +181,31 @@ def enqueue_file(filepath):
         time.sleep(2)
     if not SIGNAL_STOP:
         CONV_QUEUE.append((filepath, bytes2human(last_size), random_name()))
-        d("ENQUEUE", f"Enqueued {filepath}")
+        i("ENQUEUE", f"Enqueued {filepath}")
     else:
         d("ENQUEUE", f"Stopped before enqueueing {filepath}")
 
 def post_convert(input_file, temp_file, output_file, copy_temp = True):
     if copy_temp:
-        shutil.move(temp_file, output_file)
-        d("POSTPROC", f"Moved temp file to {output_file}")
+        if os.path.exists(temp_file):
+            shutil.move(temp_file, output_file)
+            d("POSTPROC", f"Moved temp file to {output_file}")
+        else:
+            w("POSTPROC", f"Temp-File \"{temp_file}\" not found!")
+            return
     archive_filename = os.path.join(ARCHIVE_DIR, os.path.basename(input_file))
     if MOVE_ORIG and (not os.path.exists(archive_filename) or OVERWRITE):
-        shutil.move(input_file, archive_filename)
-        d("POSTPROC", f"Moved {input_file} to archive {archive_filename}")
+        if os.path.exists(input_file):
+            shutil.move(input_file, archive_filename)
+            d("POSTPROC", f"Moved {input_file} to archive {archive_filename}")
+        else:
+            w("POSTPROC", f"Input file \"{input_file}\" not found!")
     if DEL_ORIG and not MOVE_ORIG:
-        os.remove(input_file)
-        d("POSTPROC", f"Deleted input file {input_file}")
+        if os.path.exists(input_file):
+            os.remove(input_file)
+            d("POSTPROC", f"Deleted input file {input_file}")
+        else:
+            w("POSTPROC", f"Input file \"{input_file}\" not found!")
     
 
 
@@ -195,10 +217,10 @@ def convert_file(input_tuple):
     temp_file = os.path.join(TMP_DIR, input_tuple[2] + output_ext)
     if os.path.exists(output_file):
         if os.path.getsize(output_file) == 0 or OVERWRITE:
-            d("CONVERT", f"Output file exists, removing (empty or overwrite)")
+            i("CONVERT", f"Output file exists, removing (empty or overwrite)")
             os.remove(output_file)
         else:
-            d("CONVERT", f"Skipping conversion of {input_file} (exists)")
+            i("CONVERT", f"Skipping conversion of {input_file} (exists)")
             post_convert(input_file, None, output_file, False)
             return
 
@@ -209,7 +231,7 @@ def convert_file(input_tuple):
                              stdout=subprocess.PIPE)
     frame_count = int(re.sub("[^0-9]", "", FFMP_PROC.communicate()[0].decode()))
 
-    d("CONVERT", f"Start transcoding of {input_file} ({frame_count} frames total)")
+    i("CONVERT", f"Start transcoding of {input_file} ({frame_count} frames total)")
     STAT_TIME_STARTED = round(time.time())
     STAT_FILE = os.path.basename(input_file)
 
@@ -254,7 +276,7 @@ def convert_file(input_tuple):
             sbuf = ""
     
     if SIGNAL_STOP or FFMP_PROC.returncode != 0:
-        d("CONVERT", "Conversion stopped, cleaning up...")
+        i("CONVERT", "Conversion stopped, cleaning up...")
         if os.path.exists(temp_file):
             os.remove(temp_file)
         resetVars()
@@ -264,6 +286,8 @@ def convert_file(input_tuple):
 
     post_convert(input_file, temp_file, output_file)
     resetVars()
+
+    i("CONVERT", f"Done processing {input_file} to {output_file}")
 
 def watch_conversion_queue():
     global CONV_QUEUE
@@ -278,46 +302,46 @@ def check_folders():
     d("FW_INIT", "Checking folders...")
     if not os.path.exists(TMP_DIR):
         if not os.access(os.path.abspath(os.path.join(TMP_DIR, os.pardir)), os.W_OK):
-            print("ERROR: Cannot create TMP_DIR, parent is not writeable!", flush=True)
+            w("FW_INIT", "ERROR: Cannot create TMP_DIR, parent is not writeable!")
             sys.exit(1)
         os.makedirs(TMP_DIR)
     if not os.path.exists(OUT_DIR):
         if not os.access(os.path.abspath(os.path.join(OUT_DIR, os.pardir)), os.W_OK):
-            print("ERROR: Cannot create OUT_DIR, parent is not writeable!", flush=True)
+            w("FW_INIT", "ERROR: Cannot create OUT_DIR, parent is not writeable!")
             sys.exit(1)
         os.makedirs(OUT_DIR)
     if not os.path.exists(INP_DIR):
         if not os.access(os.path.abspath(os.path.join(INP_DIR, os.pardir)), os.W_OK):
-            print("ERROR: Cannot create INP_DIR, parent is not writeable!", flush=True)
+            w("FW_INIT", "ERROR: Cannot create INP_DIR, parent is not writeable!")
             sys.exit(1)
         os.makedirs(INP_DIR)
     if not os.path.exists(ARCHIVE_DIR):
         if not os.access(os.path.abspath(os.path.join(ARCHIVE_DIR, os.pardir)), os.W_OK):
-            print("ERROR: Cannot create ARCHIVE_DIR, parent is not writeable!", flush=True)
+            w("FW_INIT", "ERROR: Cannot create ARCHIVE_DIR, parent is not writeable!")
             sys.exit(1)
         os.makedirs(ARCHIVE_DIR)
 
 
     if not os.access(TMP_DIR, os.W_OK):
-        print("ERROR: TMP_DIR is not writeable!", flush=True)
+        w("FW_INIT", "ERROR: TMP_DIR is not writeable!")
         sys.exit(1)
     else:
         d("FW_INIT", "TMP_DIR is writeable.")
 
     if not os.access(OUT_DIR, os.W_OK):
-        print("ERROR: OUT_DIR is not writeable!", flush=True)
+        w("FW_INIT", "ERROR: OUT_DIR is not writeable!")
         sys.exit(1)
     else:
         d("FW_INIT", "OUT_DIR is writeable.")
 
     if not os.access(INP_DIR, os.W_OK) and (DEL_ORIG or MOVE_ORIG):
-        print("ERROR: INP_DIR is not writeable, and moving/deleting input files enabled!", flush=True)
+        w("FW_INIT", "ERROR: INP_DIR is not writeable, and moving/deleting input files enabled!")
         sys.exit(1)
     else:
         d("FW_INIT", "INP_DIR is writeable.")
 
     if not os.access(ARCHIVE_DIR, os.W_OK) and MOVE_ORIG:
-        print("ERROR: ARCHIVE_DIR is not writeable, and moving input files enabled!", flush=True)
+        w("FW_INIT", "ERROR: ARCHIVE_DIR is not writeable, and moving input files enabled!")
         sys.exit(1)
     else:
         d("FW_INIT", "ARCHIVE_DIR is writeable.")
@@ -342,7 +366,7 @@ def watch_directory():
             (_, type_names, path, filename) = event
             
             if(filename.endswith("mp4")):
-                d("FLDRWATCH", f"Found new file: {filename}")
+                i("FLDRWATCH", f"Found new file: {filename}")
                 nt = threading.Thread(target=enqueue_file, args=(os.path.join(path, filename),))
                 ENQ_THREADS.append(nt)
                 nt.start()
