@@ -555,7 +555,7 @@ def resetVars():
 def initVars():
     global FFMPEG_NICE, FFMPEG_CMD, FFPROBE_CMD, INP_DIR, OUT_DIR, TMP_DIR, ARCHIVE_DIR, DEL_ORIG, MOVE_ORIG, OVERWRITE, CODECS, EXTENSIONS, PORT, HOST, OUT_EXT
     if 'FFA_ENV' in os.environ:
-        FFMPEG_NICE = int(os.getenv('FFMPEG_NICE')) or FFMPEG_NICE
+        FFMPEG_NICE = FFMPEG_NICE if os.getenv('FFMPEG_NICE') is None else int(os.getenv('FFMPEG_NICE'))
         FFMPEG_CMD = os.getenv('FFMPEG_CMD') or FFMPEG_CMD
         FFPROBE_CMD = os.getenv('FFPROBE_CMD') or FFPROBE_CMD
         INP_DIR = os.getenv('INP_DIR') or INP_DIR
