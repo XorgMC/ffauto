@@ -199,7 +199,7 @@ async def web_del(request: aiohttp.web.Request) -> aiohttp.web.Response:
     return web.Response(text="OK")
 
 
-async def web_stop() -> aiohttp.web.Response:
+async def web_stop(unused) -> aiohttp.web.Response:
     """
     Stops the current conversion
     :return:
@@ -210,7 +210,7 @@ async def web_stop() -> aiohttp.web.Response:
     return web.Response(text="")
 
 
-async def web_queue() -> aiohttp.web.Response:
+async def web_queue(unused) -> aiohttp.web.Response:
     """
     Returns the current queue, json-encoded
     :return:
@@ -218,7 +218,7 @@ async def web_queue() -> aiohttp.web.Response:
     return web.Response(text=json.dumps(conv_queue))
 
 
-async def web_stats() -> aiohttp.web.Response:
+async def web_stats(unused) -> aiohttp.web.Response:
     """
     Returns the current statistics, json-encoded
     :return:
@@ -236,14 +236,14 @@ async def web_stats() -> aiohttp.web.Response:
     }))
 
 
-async def favicon() -> aiohttp.web.FileResponse:
+async def favicon(unused) -> aiohttp.web.FileResponse:
     """
     :return: the favicon
     """
     return web.FileResponse('./favicon.ico')
 
 
-async def index() -> aiohttp.web.FileResponse:
+async def index(unused) -> aiohttp.web.FileResponse:
     """
     :return: the index.html page
     """
