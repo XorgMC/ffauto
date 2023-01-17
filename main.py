@@ -515,15 +515,15 @@ def start_conversion_thread():
 
 def watch_directory():
     global conv_queue
-    i = inotify.adapters.Inotify()
+    inot = inotify.adapters.Inotify()
 
-    i.add_watch(INP_DIR, mask=(inotify.constants.IN_CREATE | inotify.constants.IN_MOVED_TO))
+    inot.add_watch(INP_DIR, mask=(inotify.constants.IN_CREATE | inotify.constants.IN_MOVED_TO))
 
     while not SIGNAL_STOP:
-        for event in i.event_gen(yield_nones=False, timeout_s=1):
+        for event in inot.event_gen(yield_nones=False, timeout_s=1):
             (_, type_names, path, filename) = event
 
-            if (filename.endswith("mp4")):
+            if filename.endswith("mp4"):
                 i("FLDRWATCH", f"Found new file: {filename}")
                 nt = threading.Thread(target=enqueue_file, args=(os.path.join(path, filename),))
                 enq_threads.append(nt)
@@ -535,7 +535,7 @@ def watch_directory():
                     enq_threads.remove(enq_thread)
 
             time.sleep(0.5)
-    d("FLDRWATCH", "Watchloop stopped!")
+    d("FLDRWATCH", "Watch loop stopped!")
 
 
 def resetVars():
